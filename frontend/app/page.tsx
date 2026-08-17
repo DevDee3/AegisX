@@ -6,6 +6,20 @@ import { WardDial } from "@/components/WardDial";
 import { VerdictBadge, FindingsList, PipelineTrace } from "@/components/GuardianUI";
 import { useWallet } from "@/lib/wallet";
 
+function nativeToWei(value: string): string {
+  const normalized = value.trim();
+  if (!/^\d+(\.\d{1,18})?$/.test(normalized)) throw new Error("Native value must be a non-negative amount with up to 18 decimals.");
+  const [whole, fraction = ""] = normalized.split(".");
+  return `${BigInt(whole) * 10n ** 18n + BigInt((fraction + "0".repeat(18)).slice(0, 18))}`;
+}
+
+function weiToNative(value: string): string {
+  const wei = BigInt(value);
+  const whole = wei / 10n ** 18n;
+  const fraction = (wei % 10n ** 18n).toString().padStart(18, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
 const EXAMPLES = [
   {
     label: "Safe swap (trusted router)",
@@ -36,7 +50,7 @@ export default function ConsolePage() {
     setError(null);
     try {
       const imported = await wallet.getTransaction(txHash);
-      setForm(imported);
+      setForm({ ...imported, value: weiToNative(imported.value) });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -48,7 +62,7 @@ export default function ConsolePage() {
     setError(null);
     setResult(null);
     try {
-      const res = await analyzeTransaction(form);
+      const res = await analyzeTransaction({ ...form, value: nativeToWei(form.value) });
       setResult(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -125,7 +139,7 @@ export default function ConsolePage() {
               />
             </div>
             <div className="field">
-              <label htmlFor="value">Value (wei)</label>
+            <label htmlFor="value">Value (AVAX/ETH)</label>
               <input id="value" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} />
             </div>
             <div className="field">
