@@ -19,7 +19,7 @@ const EnvSchema = z
 
     // AI provider. If absent, the agent falls back to deterministic-only analysis
     // (still functional — the deterministic risk engine never depends on the AI).
-    ANTHROPIC_API_KEY: z.string().optional(),
+    GEMINI_API_KEY: z.string().optional(),
 
     // --- Phase 5: the ONLY place a private key enters this codebase. ---
     // This must be a bounded AGENT_ROLE key on GuardianVault (ideally further

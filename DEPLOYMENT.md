@@ -87,7 +87,7 @@ GUARDIAN_REGISTRY_ADDRESS=<step 1>
 GUARDIAN_VAULT_ADDRESS=<step 1>
 AGENT_PRIVATE_KEY=<the key behind AGENT_ADDRESS from step 3>
 ENABLE_ONCHAIN_PROPOSE=true
-ANTHROPIC_API_KEY=<your key, for real AI analysis instead of deterministic-only>
+GEMINI_API_KEY=<your key, for real AI analysis instead of deterministic-only>
 ```
 
 ```bash

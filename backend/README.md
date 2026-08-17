@@ -42,7 +42,7 @@ src/
     walletAnalyzer.ts          Native balance + per-token balance/allowance exposure
   agent/
     schema.ts                  Zod schema = the validation boundary for AI output
-    tools.ts                   Tool definitions bridging Claude tool-use -> analyzers
+    tools.ts                   Gemini function definitions bridging -> analyzers
     agent.ts                   Bounded tool-use loop (max 6 rounds), read-only tools only
   risk/
     riskEngine.ts               Deterministic combine(): AI score is ONE input
@@ -63,14 +63,20 @@ src/
 
 ```bash
 npm install
-cp .env.example .env   # set AVALANCHE_RPC_URL, GUARDIAN_REGISTRY_ADDRESS, ANTHROPIC_API_KEY
+cp .env.example .env   # set AVALANCHE_RPC_URL, GUARDIAN_REGISTRY_ADDRESS, GEMINI_API_KEY
 npm run dev
 ```
 
-Without `ANTHROPIC_API_KEY` set, the server still runs — every endpoint falls
+Without `GEMINI_API_KEY` set, the server still runs — every endpoint falls
 back to deterministic-only scoring (the AI assessment is `null`, and
 `combine()` treats an absent AI opinion as maximally uncertain, not as
 evidence of safety).
+
+AI analysis uses Google's Gemini API with the pinned `gemini-2.5-flash` model.
+Gemini's free tier has daily request limits; a daily quota exhaustion is
+reported immediately and resets at midnight Pacific, while short per-minute
+rate limits receive bounded backoff retries. Keep a paid or appropriately
+limited key configured for demos that make many requests.
 
 Sanity checks (no test runner wired up yet — a real vitest/jest suite is a
 good next step, ideally alongside Phase 5):

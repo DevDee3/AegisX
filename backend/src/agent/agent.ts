@@ -1,11 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
-import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
+import { GoogleGenerativeAI, type Content, type GenerateContentResult } from "@google/generative-ai";
 import { env } from "../config/env.js";
 import { guardianTools, executeGuardianTool } from "./tools.js";
 import { parseAiRiskOutput, type AiRiskOutput } from "./schema.js";
 
-const MODEL = "claude-sonnet-4-5"; // keep pinned; bump deliberately, not silently
-const MAX_TOOL_ROUNDS = 6; // bound the chain — this is a bounded analysis agent, not an open-ended loop
+const MODEL = "gemini-2.5-flash";
+const MAX_TOOL_ROUNDS = 6;
+const MAX_RATE_LIMIT_RETRIES = 2;
 
 const SYSTEM_PROMPT = `You are the AegisX security analysis agent.
 
@@ -17,13 +17,11 @@ analyze and recommend; a human or the deterministic policy contract decides
 what actually executes.
 
 Use your tools to gather real on-chain evidence before forming an opinion.
-Chain tool calls as needed (e.g. analyze a target contract, then analyze the
-full transaction, then form a view). Do not guess at contract state you could
-have looked up.
+Chain tool calls as needed. Do not guess at contract state you could have
+looked up.
 
 When you have gathered enough evidence, respond with ONLY a single JSON
-object (no markdown fences, no prose before or after) matching exactly this
-shape:
+object (no markdown fences, no prose before or after) matching exactly this shape:
 {
   "riskScore": <integer 0-100>,
   "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
@@ -32,10 +30,8 @@ shape:
 }
 
 Your riskScore is an INPUT to a separate deterministic risk engine, not a
-final decision — the engine independently applies hard rules (blocklists,
-unlimited-approval detection, spending limits) that you cannot override. Be
-honest and specific rather than reassuring; understating risk has no benefit
-since the deterministic layer will catch what you miss.`;
+final decision — the engine independently applies hard rules that you cannot
+override. Be honest and specific rather than reassuring.`;
 
 export interface AgentRunResult {
   aiOutput: AiRiskOutput | null;
@@ -43,70 +39,70 @@ export interface AgentRunResult {
   toolCallCount: number;
 }
 
-/// Runs a bounded tool-use loop: the model may call any of `guardianTools`
-/// up to MAX_TOOL_ROUNDS times, then must terminate with the structured JSON
-/// object described in SYSTEM_PROMPT. Returns `aiOutput: null` (never throws
-/// for a "bad" model response) if the model's final text doesn't validate
-/// against AiRiskOutputSchema — callers fall back to deterministic-only
-/// scoring in that case; see risk/riskEngine.ts combine().
 export async function runGuardianAgent(userPrompt: string): Promise<AgentRunResult> {
-  if (!env.ANTHROPIC_API_KEY) {
-    return { aiOutput: null, transcript: [], toolCallCount: 0 };
-  }
+  if (!env.GEMINI_API_KEY) return { aiOutput: null, transcript: [], toolCallCount: 0 };
 
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const messages: MessageParam[] = [{ role: "user", content: userPrompt }];
+  const client = new GoogleGenerativeAI(env.GEMINI_API_KEY);
+  const model = client.getGenerativeModel({
+    model: MODEL,
+    systemInstruction: SYSTEM_PROMPT,
+    tools: [{ functionDeclarations: guardianTools }],
+  });
+  const contents: Content[] = [{ role: "user", parts: [{ text: userPrompt }] }];
   const transcript: { role: string; content: string }[] = [{ role: "user", content: userPrompt }];
   let toolCallCount = 0;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
-      system: SYSTEM_PROMPT,
-      tools: guardianTools,
-      messages,
-    });
+    const response = await generateWithQuotaHandling(() => model.generateContent({ contents }));
+    const parts = response.response.candidates?.[0]?.content.parts ?? [];
+    const functionCalls = parts.filter((part) => part.functionCall).map((part) => part.functionCall!);
 
-    const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
-
-    if (toolUseBlocks.length === 0) {
-      const text = response.content
-        .filter((b) => b.type === "text")
-        .map((b) => b.text)
-        .join("\n");
+    if (functionCalls.length === 0) {
+      const text = parts.filter((part) => part.text).map((part) => part.text).join("\n");
       transcript.push({ role: "assistant", content: text });
       return { aiOutput: parseAiRiskOutput(text), transcript, toolCallCount };
     }
 
-    messages.push({ role: "assistant", content: response.content });
-
-    const toolResults = await Promise.all(
-      toolUseBlocks.map(async (block) => {
-        toolCallCount++;
-        try {
-          const result = await executeGuardianTool(block.name, block.input as Record<string, unknown>);
-          return {
-            type: "tool_result" as const,
-            tool_use_id: block.id,
-            content: JSON.stringify(result),
-          };
-        } catch (err) {
-          return {
-            type: "tool_result" as const,
-            tool_use_id: block.id,
-            content: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-            is_error: true,
-          };
-        }
-      })
-    );
-
-    messages.push({ role: "user", content: toolResults });
-    transcript.push({ role: "tool", content: `${toolUseBlocks.length} tool call(s)` });
+    contents.push({ role: "model", parts });
+    const functionResponses = await Promise.all(functionCalls.map(async (call) => {
+      toolCallCount++;
+      try {
+        const result = await executeGuardianTool(call.name, (call.args ?? {}) as Record<string, unknown>);
+        return { functionResponse: { name: call.name, response: result as Record<string, unknown> } };
+      } catch (err) {
+        return { functionResponse: { name: call.name, response: { error: err instanceof Error ? err.message : String(err) } } };
+      }
+    }));
+    contents.push({ role: "user", parts: functionResponses });
+    transcript.push({ role: "tool", content: `${functionCalls.length} tool call(s)` });
   }
 
-  // Exhausted the tool-call budget without a final structured answer — this
-  // counts as "AI analysis unavailable," not a crash.
   return { aiOutput: null, transcript, toolCallCount };
+}
+
+async function generateWithQuotaHandling(request: () => Promise<GenerateContentResult>): Promise<GenerateContentResult> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await request();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!is429(err) || isDailyQuota(message)) {
+        if (is429(err) && isDailyQuota(message)) {
+          throw new Error("Gemini daily quota exhausted; quota resets at midnight Pacific.");
+        }
+        throw err;
+      }
+      if (attempt >= MAX_RATE_LIMIT_RETRIES) throw new Error(`Gemini rate limit persisted after ${MAX_RATE_LIMIT_RETRIES} retries: ${message}`);
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+    }
+  }
+}
+
+function is429(err: unknown): boolean {
+  const status = (err as { status?: number; response?: { status?: number } })?.status ?? (err as { response?: { status?: number } })?.response?.status;
+  return status === 429 || /429|resource exhausted|rate limit/i.test(err instanceof Error ? err.message : String(err));
+}
+
+function isDailyQuota(message: string): boolean {
+  return /daily|per day|requestsperday|quota.*exhausted|resets?.*midnight|GenerateRequestsPerDay/i.test(message);
 }

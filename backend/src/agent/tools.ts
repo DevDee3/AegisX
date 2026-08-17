@@ -1,4 +1,4 @@
-import type { Tool } from "@anthropic-ai/sdk/resources/messages.js";
+import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
 import type { Address, Hex } from "viem";
 import { analyzeContract } from "../analyzer/contractAnalyzer.js";
 import { analyzeTransaction } from "../analyzer/transactionAnalyzer.js";
@@ -11,15 +11,15 @@ import { analyzeWallet } from "../analyzer/walletAnalyzer.js";
 /// vault's propose path; it will still never give the agent a tool that
 /// calls the vault directly.
 
-export const guardianTools: Tool[] = [
+export const guardianTools: FunctionDeclaration[] = [
   {
     name: "analyze_contract",
     description:
       "Inspect a contract address: Guardian registry status (trusted/unknown/suspicious/blocked), upgradeability (proxy pattern detection), and owner() if present. Use this before assessing risk on any target contract.",
-    input_schema: {
-      type: "object",
+    parameters: {
+      type: SchemaType.OBJECT,
       properties: {
-        address: { type: "string", description: "0x-prefixed contract address" },
+        address: { type: SchemaType.STRING, description: "0x-prefixed contract address" },
       },
       required: ["address"],
     },
@@ -28,13 +28,13 @@ export const guardianTools: Tool[] = [
     name: "analyze_transaction",
     description:
       "Analyze a proposed transaction: decodes the calldata (recognizes approve/transfer/transferFrom/swap and reports args), checks for unlimited-approval patterns, runs the target contract analysis, and does a fast eth_call-based revert check. Use this for any concrete transaction the user is considering.",
-    input_schema: {
-      type: "object",
+    parameters: {
+      type: SchemaType.OBJECT,
       properties: {
-        from: { type: "string", description: "sender address (the Guardian vault)" },
-        target: { type: "string", description: "target contract address" },
-        value: { type: "string", description: "native AVAX value in wei, as a decimal string" },
-        data: { type: "string", description: "0x-prefixed calldata" },
+        from: { type: SchemaType.STRING, description: "sender address (the Guardian vault)" },
+        target: { type: SchemaType.STRING, description: "target contract address" },
+        value: { type: SchemaType.STRING, description: "native AVAX value in wei, as a decimal string" },
+        data: { type: SchemaType.STRING, description: "0x-prefixed calldata" },
       },
       required: ["from", "target", "value", "data"],
     },
@@ -43,17 +43,17 @@ export const guardianTools: Tool[] = [
     name: "analyze_wallet",
     description:
       "Check a wallet's native balance and, for a given list of tokens/spenders, its ERC-20 balances and outstanding allowances. Use this to answer questions about exposure or 'what has this wallet approved'.",
-    input_schema: {
-      type: "object",
+    parameters: {
+      type: SchemaType.OBJECT,
       properties: {
-        wallet: { type: "string" },
+        wallet: { type: SchemaType.STRING },
         tokens: {
-          type: "array",
+          type: SchemaType.ARRAY,
           items: {
-            type: "object",
+            type: SchemaType.OBJECT,
             properties: {
-              token: { type: "string" },
-              spendersToCheck: { type: "array", items: { type: "string" } },
+              token: { type: SchemaType.STRING },
+              spendersToCheck: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
             },
             required: ["token", "spendersToCheck"],
           },
@@ -90,7 +90,7 @@ export async function executeGuardianTool(name: string, input: Record<string, un
   }
 }
 
-/// JSON.stringify chokes on bigint; tool results go back to Claude as JSON
+/// JSON.stringify chokes on bigint; tool results go back to Gemini as JSON
 /// text, so convert bigints to strings before sending.
 function serializeBigInts(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v)));
