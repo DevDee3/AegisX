@@ -8,6 +8,7 @@ import { parseAiRiskOutput, type AiRiskOutput } from "./schema.js";
 const MODEL = "gemini-3.6-flash";
 const MAX_TOOL_ROUNDS = 6;
 const MAX_RATE_LIMIT_RETRIES = 2;
+const MAX_TRANSIENT_RETRIES = 3;
 
 const SYSTEM_PROMPT = `You are the AegisX security analysis agent.
 
@@ -56,6 +57,10 @@ export async function runGuardianAgent(userPrompt: string): Promise<AgentRunResu
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await generateWithQuotaHandling(() => model.generateContent({ contents }));
+    if (!response) {
+      transcript.push({ role: "system", content: "Gemini temporarily unavailable; using deterministic-only analysis" });
+      return { aiOutput: null, transcript, toolCallCount };
+    }
     const parts = response.response.candidates?.[0]?.content.parts ?? [];
     const functionCalls = parts.filter((part) => part.functionCall).map((part) => part.functionCall!);
 
@@ -82,12 +87,17 @@ export async function runGuardianAgent(userPrompt: string): Promise<AgentRunResu
   return { aiOutput: null, transcript, toolCallCount };
 }
 
-async function generateWithQuotaHandling(request: () => Promise<GenerateContentResult>): Promise<GenerateContentResult> {
+async function generateWithQuotaHandling(request: () => Promise<GenerateContentResult>): Promise<GenerateContentResult | null> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await request();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (isTransientUnavailable(err, message)) {
+        if (attempt >= MAX_TRANSIENT_RETRIES) return null;
+        await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+        continue;
+      }
       if (!is429(err) || isDailyQuota(message)) {
         if (is429(err) && isDailyQuota(message)) {
           throw new Error("Gemini daily quota exhausted; quota resets at midnight Pacific.");
@@ -103,6 +113,11 @@ async function generateWithQuotaHandling(request: () => Promise<GenerateContentR
 function is429(err: unknown): boolean {
   const status = (err as { status?: number; response?: { status?: number } })?.status ?? (err as { response?: { status?: number } })?.response?.status;
   return status === 429 || /429|resource exhausted|rate limit/i.test(err instanceof Error ? err.message : String(err));
+}
+
+function isTransientUnavailable(err: unknown, message: string): boolean {
+  const status = (err as { status?: number; response?: { status?: number } })?.status ?? (err as { response?: { status?: number } })?.response?.status;
+  return status === 503 || /503|service unavailable|high demand|temporarily unavailable/i.test(message);
 }
 
 function isDailyQuota(message: string): boolean {
