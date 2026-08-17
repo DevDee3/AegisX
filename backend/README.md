@@ -72,7 +72,7 @@ back to deterministic-only scoring (the AI assessment is `null`, and
 `combine()` treats an absent AI opinion as maximally uncertain, not as
 evidence of safety).
 
-AI analysis uses Google's Gemini API with the pinned `gemini-2.5-flash` model.
+AI analysis uses Google's Gemini API with the pinned `gemini-3.6-flash` model.
 Gemini's free tier has daily request limits; a daily quota exhaustion is
 reported immediately and resets at midnight Pacific, while short per-minute
 rate limits receive bounded backoff retries. Keep a paid or appropriately

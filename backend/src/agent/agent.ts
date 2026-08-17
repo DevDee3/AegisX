@@ -3,7 +3,9 @@ import { env } from "../config/env.js";
 import { guardianTools, executeGuardianTool } from "./tools.js";
 import { parseAiRiskOutput, type AiRiskOutput } from "./schema.js";
 
-const MODEL = "gemini-2.5-flash";
+// Gemini has retired 2.5 Flash for new users; keep this pinned to the
+// provider's current stable replacement rather than discovering it at runtime.
+const MODEL = "gemini-3.6-flash";
 const MAX_TOOL_ROUNDS = 6;
 const MAX_RATE_LIMIT_RETRIES = 2;
 
