@@ -36,7 +36,7 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "256kb" })); // small cap — this API never needs large bodies
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", chainId: env.CHAIN_ID });
+  res.json({ status: "ok", chainId: env.CHAIN_ID, aiProvider: "gemini", aiConfigured: Boolean(env.GEMINI_API_KEY) });
 });
 
 /// NOTE on every route below: these all return an ANALYSIS. None of them

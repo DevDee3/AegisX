@@ -43,7 +43,10 @@ export interface AgentRunResult {
 }
 
 export async function runGuardianAgent(userPrompt: string): Promise<AgentRunResult> {
-  if (!env.GEMINI_API_KEY) return { aiOutput: null, transcript: [], toolCallCount: 0 };
+  if (!env.GEMINI_API_KEY) {
+    console.warn("AI analysis unavailable: GEMINI_API_KEY is not configured");
+    return { aiOutput: null, transcript: [], toolCallCount: 0 };
+  }
 
   const client = new GoogleGenerativeAI(env.GEMINI_API_KEY);
   const models = MODELS.map((modelName) => client.getGenerativeModel({
@@ -62,6 +65,7 @@ export async function runGuardianAgent(userPrompt: string): Promise<AgentRunResu
       if (response) break;
     }
     if (!response) {
+      console.warn("AI analysis unavailable: all configured Gemini models failed or were unavailable");
       transcript.push({ role: "system", content: "Gemini temporarily unavailable; using deterministic-only analysis" });
       return { aiOutput: null, transcript, toolCallCount };
     }
@@ -71,7 +75,9 @@ export async function runGuardianAgent(userPrompt: string): Promise<AgentRunResu
     if (functionCalls.length === 0) {
       const text = parts.filter((part) => part.text).map((part) => part.text).join("\n");
       transcript.push({ role: "assistant", content: text });
-      return { aiOutput: parseAiRiskOutput(text), transcript, toolCallCount };
+      const aiOutput = parseAiRiskOutput(text);
+      if (!aiOutput) console.warn("AI analysis rejected: Gemini response failed AiRiskOutput schema validation");
+      return { aiOutput, transcript, toolCallCount };
     }
 
     contents.push({ role: "model", parts });
