@@ -79,6 +79,10 @@ Frontend `.env.local`:
 NEXT_PUBLIC_BACKEND_URL=http://localhost:8787
 ```
 
+For a deployed frontend, replace this with the public HTTPS backend URL in
+the frontend host's environment settings before rebuilding. The backend also
+needs `GEMINI_API_KEY` configured in its own host environment.
+
 Never commit `.env` or private keys. Use a dedicated, low-balance Fuji key for testing and rotate any key that has been exposed.
 
 ## Wallet scanning limitations

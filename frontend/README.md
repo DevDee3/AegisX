@@ -54,6 +54,10 @@ cp .env.example .env   # point NEXT_PUBLIC_BACKEND_URL at your backend
 npm run dev
 ```
 
+For production, set `NEXT_PUBLIC_BACKEND_URL` in the frontend hosting
+provider to the deployed backend's public HTTPS URL before rebuilding. This
+variable is embedded at build time.
+
 Requires `../backend` running (see its README) for any page to show real
 data — this frontend has nothing to fall back to on its own, by design; it's
 a view onto the pipeline, not a second implementation of it.

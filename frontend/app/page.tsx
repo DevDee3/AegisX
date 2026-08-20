@@ -8,6 +8,7 @@ import { useWallet } from "@/lib/wallet";
 
 function nativeToWei(value: string): string {
   const normalized = value.trim();
+  if (normalized === "") return "0";
   if (!/^\d+(\.\d{1,18})?$/.test(normalized)) throw new Error("Native value must be a non-negative amount with up to 18 decimals.");
   const [whole, fraction = ""] = normalized.split(".");
   return `${BigInt(whole) * 10n ** 18n + BigInt((fraction + "0".repeat(18)).slice(0, 18))}`;
