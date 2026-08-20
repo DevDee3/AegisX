@@ -138,5 +138,5 @@ function isModelUnavailable(err: unknown, message: string): boolean {
 }
 
 function isDailyQuota(message: string): boolean {
-  return /daily|per day|requestsperday|quota.*exhausted|resets?.*midnight|GenerateRequestsPerDay/i.test(message);
+  return /daily|per day|requestsperday|quota.*(exhausted|exceed|limit)|exceed.*(current )?quota|current quota|plan and billing|GenerateRequestsPerDay/i.test(message);
 }
