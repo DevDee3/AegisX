@@ -70,7 +70,18 @@ export type RiskAssessment = z.infer<typeof RiskAssessmentSchema>;
 export function parseAiRiskOutput(raw: string): AiRiskOutput | null {
   let json: unknown;
   try {
-    json = JSON.parse(raw);
+    // Gemini normally honors responseMimeType, but a provider/proxy may still
+    // wrap JSON in markdown or add a short preamble. Strip only that transport
+    // noise; the object still must pass the unchanged Zod schema below.
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    try {
+      json = JSON.parse(cleaned);
+    } catch {
+      const start = cleaned.indexOf("{");
+      const end = cleaned.lastIndexOf("}");
+      if (start < 0 || end <= start) return null;
+      json = JSON.parse(cleaned.slice(start, end + 1));
+    }
   } catch {
     return null;
   }

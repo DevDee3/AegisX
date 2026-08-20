@@ -53,6 +53,7 @@ export async function runGuardianAgent(userPrompt: string): Promise<AgentRunResu
     model: modelName,
     systemInstruction: SYSTEM_PROMPT,
     tools: [{ functionDeclarations: guardianTools }],
+    generationConfig: { responseMimeType: "application/json" },
   }));
   const contents: Content[] = [{ role: "user", parts: [{ text: userPrompt }] }];
   const transcript: { role: string; content: string }[] = [{ role: "user", content: userPrompt }];
