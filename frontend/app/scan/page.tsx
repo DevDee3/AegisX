@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { analyzeWallet, discoverWallet, type WalletAnalysisResponse } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { analyzeWallet, type WalletAnalysisResponse } from "@/lib/api";
 import { FindingsList } from "@/components/GuardianUI";
+import { useWallet } from "@/lib/wallet";
 
 export default function ScanPage() {
   const [wallet, setWallet] = useState("");
@@ -10,8 +11,11 @@ export default function ScanPage() {
   const [result, setResult] = useState<WalletAnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [discovering, setDiscovering] = useState(false);
-  const [discoveryNote, setDiscoveryNote] = useState<string | null>(null);
+  const walletConnection = useWallet();
+
+  useEffect(() => {
+    if (walletConnection.address) setWallet(walletConnection.address);
+  }, [walletConnection.address]);
 
   async function scan() {
     setLoading(true); setError(null); setResult(null);
@@ -25,22 +29,11 @@ export default function ScanPage() {
     finally { setLoading(false); }
   }
 
-  async function discover() {
-    setDiscovering(true); setError(null); setDiscoveryNote(null);
-    try {
-      const found = await discoverWallet(wallet);
-      setTokens(found.tokens.map((item) => `${item.token}${item.spendersToCheck.length ? `|${item.spendersToCheck.join(";")}` : ""}`).join(", "));
-      setDiscoveryNote(`Discovered ${found.tokens.length} token(s) from blocks ${found.fromBlock}–${found.toBlock}. Review the list, then run the security scan.`);
-    } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
-    finally { setDiscovering(false); }
-  }
-
   return <div>
     <div style={{ marginBottom: 32 }}>
       <h1 style={{ fontSize: 28, margin: "0 0 8px" }}>Wallet security scan</h1>
       <p style={{ color: "var(--ward-mist)", margin: 0, fontSize: 14, maxWidth: 620 }}>
-        Check a connected wallet for known exposure signals before funds are at risk.
-        AegisX reports evidence, not a guarantee of safety.
+        Check a wallet for native balance, token balances, and allowance exposure. AegisX reports evidence, not a guarantee of safety.
       </p>
     </div>
 
@@ -51,15 +44,16 @@ export default function ScanPage() {
         <input id="scan-wallet" placeholder="Connect a wallet or enter 0x..." value={wallet} onChange={(e) => setWallet(e.target.value)} />
       </div>
       <div className="field">
-        <label htmlFor="scan-tokens">Tokens and spenders to inspect (optional)</label>
-        <input id="scan-tokens" placeholder="0xToken|0xSpender1;0xSpender2, 0xToken2" value={tokens} onChange={(e) => setTokens(e.target.value)} />
+        <label htmlFor="scan-tokens">Token contracts and spenders (optional)</label>
+        <input id="scan-tokens" placeholder="TokenAddress|SpenderAddress;SpenderAddress" value={tokens} onChange={(e) => setTokens(e.target.value)} />
       </div>
-      <button className="btn" type="button" onClick={discover} disabled={discovering || !wallet} style={{ marginRight: 8 }}>{discovering ? "Discovering…" : "Discover recent activity"}</button>
-      <button className="btn btn-primary" onClick={scan} disabled={loading || !wallet}>{loading ? "Scanning…" : "Scan for exposure"}</button>
+      <button className="btn" type="button" onClick={() => walletConnection.connect()} disabled={walletConnection.busy} style={{ marginRight: 8 }}>
+        {walletConnection.busy ? "Connecting..." : walletConnection.address ? "Wallet connected" : "Connect wallet"}
+      </button>
+      <button className="btn btn-primary" onClick={scan} disabled={loading || !wallet}>{loading ? "Scanning..." : "Scan for exposure"}</button>
       <p style={{ color: "var(--ward-mist)", fontSize: 12, marginBottom: 0 }}>
-        Checks native balance, supplied token balances, and allowances. Use token|spender to detect unlimited approvals. Full historical discovery requires an indexer.
+        Leave the token field blank for a native-balance scan. To inspect allowances, enter a token address followed by optional spender addresses separated by | and ;.
       </p>
-      {discoveryNote && <p style={{ color: "var(--signal-mint)", fontSize: 12 }}>{discoveryNote}</p>}
       {error && <p style={{ color: "var(--signal-avalanche)", fontSize: 13 }}>{error}</p>}
     </div>
 
